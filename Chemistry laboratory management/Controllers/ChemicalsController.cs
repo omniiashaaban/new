@@ -43,7 +43,7 @@ namespace Chemistry_laboratory_management.Controllers
 
             var chemicalDTO = new ChemicalDTO
             {
-              
+              Id = id ,
                 Name = chemical.Name,
                 Quantity = chemical.Quantity,
                 ExpiryDate = chemical.ExpiryDate,
@@ -72,15 +72,17 @@ namespace Chemistry_laboratory_management.Controllers
             };
 
             await _chemicalRepository.AddAsync(chemical);
-            return CreatedAtAction(nameof(GetChemical), new { id = chemical.Id }, chemicalDTO);
+
+            // جلب العنصر بعد الحفظ لضمان تحديث ID
+            var savedChemical = await _chemicalRepository.GetByIdAsync(chemical.Id);
+
+            return CreatedAtAction(nameof(GetChemical), new { id = savedChemical.Id }, savedChemical);
         }
 
         [HttpPut("{id}")]
         public async Task<ActionResult> UpdateChemical(int id, [FromBody] ChemicalDTO chemicalDTO)
         {
-            if (id != chemicalDTO.Id)
-                return BadRequest(new ApiResponse(400, "ID mismatch."));
-
+           
             if (string.IsNullOrWhiteSpace(chemicalDTO.Name) || chemicalDTO.Quantity < 0)
             {
                 return BadRequest(new ApiResponse(400, "Name and valid Quantity are required."));

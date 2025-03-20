@@ -24,6 +24,7 @@ namespace Chemistry_laboratory_management.Controllers
             var equipments = await _equipmentRepository.GetAllAsync();
             var equipmentDTOs = equipments.Select(e => new EquipmentDTO
             {
+                Id =e.Id,
                 Name = e.Name,
                 Status = e.Status,
                 LastMaintenanceDate = e.LastMaintenanceDate,
@@ -42,6 +43,7 @@ namespace Chemistry_laboratory_management.Controllers
 
             var equipmentDTO = new EquipmentDTO
             {
+                Id = id,
                 Name = equipment.Name,
                 Status = equipment.Status,
                 LastMaintenanceDate = equipment.LastMaintenanceDate,
@@ -66,7 +68,8 @@ namespace Chemistry_laboratory_management.Controllers
             };
 
             await _equipmentRepository.AddAsync(equipment);
-            return CreatedAtAction(nameof(GetEquipment), new { id = equipment.Id }, equipmentDTO);
+            var savedequipment = await _equipmentRepository.GetByIdAsync(equipment.Id);
+            return CreatedAtAction(nameof(GetEquipment), new { id = savedequipment.Id }, savedequipment);
         }
 
         [HttpPut("{id}")]
@@ -100,9 +103,9 @@ namespace Chemistry_laboratory_management.Controllers
         {
             var maintenanceRequiredEquipment = await _equipmentRepository.GetAllAsync();
 
-            var MRE = maintenanceRequiredEquipment.Where(e => e.Status == "Need a maintenance");
+            var MRE = maintenanceRequiredEquipment.Where(e => e.Status == 0);
 
-            var equipmentDTOs = maintenanceRequiredEquipment.Select(e => new EquipmentDTO
+            var equipmentDTOs = MRE.Select(e => new EquipmentDTO
             {
                 Id = e.Id,
                 Name = e.Name,
