@@ -10,11 +10,18 @@ namespace Chemistry_laboratory_management.Controllers
     [ApiController]
     public class ExperimentController : ControllerBase
     {
-        private readonly GenericRepository<Experiment> _experimentRepository;
+        private readonly GenericRepository<Experiment> _experimentRepository; 
+        private readonly GenericRepository<Chemical> _chemicalRepository;
+        private readonly GenericRepository<Equipment> _equipmentRepository;
+        private readonly GenericRepository<User> _userRepository;
 
-        public ExperimentController(GenericRepository<Experiment> experimentRepository)
+
+        public ExperimentController(GenericRepository<Experiment> experimentRepository , GenericRepository<Chemical> chemicalRepository, GenericRepository<Equipment> equipmentRepository, GenericRepository<User> userRepository)
         {
             _experimentRepository = experimentRepository;
+            _chemicalRepository = chemicalRepository;
+            _equipmentRepository = equipmentRepository;
+            _userRepository = userRepository;
         }
 
         [HttpGet]
@@ -58,13 +65,29 @@ namespace Chemistry_laboratory_management.Controllers
             if (string.IsNullOrWhiteSpace(experimentDTO.Name))
                 return BadRequest(new ApiResponse(400, "Experiment Name is required."));
 
+            // التحقق من وجود المشرف في قاعدة البيانات
+            var supervisor = await _userRepository.GetByIdAsync(experimentDTO.SupervisorId);
+            if (supervisor == null)
+                return NotFound(new ApiResponse(404, "Supervisor not found."));
+
+            // جلب المواد من قاعدة البيانات
+            var chemicals = await _chemicalRepository.GetByIdsAsync(experimentDTO.ChemicalsUsedIds);
+            if (chemicals.Count != experimentDTO.ChemicalsUsedIds.Count)
+                return NotFound(new ApiResponse(404, "One or more chemicals not found."));
+
+            // جلب الأجهزة من قاعدة البيانات
+            var equipments = await _equipmentRepository.GetByIdsAsync(experimentDTO.EquipmentUsedIds);
+            if (equipments.Count != experimentDTO.EquipmentUsedIds.Count)
+                return NotFound(new ApiResponse(404, "One or more equipments not found."));
+
+            // إنشاء كيان التجربة
             var experiment = new Experiment
             {
                 Name = experimentDTO.Name,
                 ExperimentDate = experimentDTO.Date,
                 SupervisorID = experimentDTO.SupervisorId,
-                Chemicals = experimentDTO.ChemicalsUsedIds.Select(id => new Chemical { Id = id }).ToList(),
-                Equipments = experimentDTO.EquipmentUsedIds.Select(id => new Equipment { Id = id }).ToList()
+                Chemicals = chemicals,  // استخدام الكيانات المسترجعة من قاعدة البيانات
+                Equipments = equipments // استخدام الكيانات المسترجعة من قاعدة البيانات
             };
 
             await _experimentRepository.AddAsync(experiment);

@@ -51,5 +51,9 @@ namespace laboratory.DAL.Repository
                 await _context.SaveChangesAsync();
             }
         }
+        public async Task<List<T>> GetByIdsAsync(List<int> ids)
+        {
+            return await _context.Set<T>().Where(e => ids.Contains((int)e.GetType().GetProperty("Id").GetValue(e, null))).ToListAsync();
+        }
     }
 }
