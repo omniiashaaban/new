@@ -1,4 +1,5 @@
 ﻿using Chemistry_laboratory_management.Dtos;
+using iText.Commons.Actions.Contexts;
 using laboratory.DAL.DTOs;
 using laboratory.DAL.Models;
 using laboratory.DAL.Repository;
@@ -26,42 +27,56 @@ namespace Chemistry_laboratory_management.Controllers
             _userRepository = userRepository;
         }
         [HttpGet]
-       
-        public async Task<IActionResult> GetAllExperiments()
+        public async Task<ActionResult<ApiResponse>> GetAllExperiments()
         {
-            var result = await _experimentRepository.GetAllAsync();
-            var query = result.AsQueryable()
-                              .Include(e => e.Equipments)
-                              .Include(e => e.Chemicals);
+            var experiments = await _experimentRepository.GetAllWithIncludesAsync(
+                e => e.Equipments,
+                e => e.Chemicals
+            );
 
-            var experimentsList = await query.ToListAsync();
+            if (experiments == null || !experiments.Any())
+                return NotFound(new ApiResponse(404, "No experiments found."));
 
-            return Ok(experimentsList);
-        }
-    
-
-        [HttpGet("{id}")]
-        public async Task<ActionResult<ExperimentDTO>> GetExperiment(int id)
-        {
-            var experiment = await _experimentRepository.GetByIdAsync(id);
-            if (experiment == null)
-                return NotFound(new ApiResponse(404, "Experiment not found."));
-
-            var experimentDTO = new ExperimentDTO
+            var experimentsDTO = experiments.Select(experiment => new ExperimentDTOResponse
             {
                 Name = experiment.Name,
                 Date = experiment.ExperimentDate,
                 SupervisorId = experiment.SupervisorID,
-                ChemicalsUsedIds = experiment.Chemicals.Select(c => c.Id).ToList(),
-                EquipmentUsedIds = experiment.Equipments.Select(eq => eq.Id).ToList()
+                ChemicalsUsedNames = experiment.Chemicals.Select(c => c.Name).ToList(),
+                EquipmentUsedNames = experiment.Equipments.Select(eq => eq.Name).ToList()
+            }).ToList();
+
+            return Ok(experimentsDTO);
+        }
+
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<ApiResponse>> GetExperiment(int id)
+        {
+            var experiment = await _experimentRepository.GetByIdWithIncludesAsync(
+                e => e.Id == id,
+                e => e.Equipments,
+                e => e.Chemicals
+            );
+
+            if (experiment == null)
+                return NotFound(new ApiResponse(404, "Experiment not found."));
+
+            var experimentDTO = new ExperimentDTOResponse
+            {
+                Id = id,
+                Name = experiment.Name,
+                Date = experiment.ExperimentDate,
+                SupervisorId = experiment.SupervisorID,
+                ChemicalsUsedNames = experiment.Chemicals.Select(c => c.Name).ToList(),
+                EquipmentUsedNames = experiment.Equipments.Select(eq => eq.Name).ToList()
             };
 
             return Ok(experimentDTO);
         }
 
-
         [HttpPost]
-        public async Task<ActionResult> AddExperiment([FromBody] ExperimentDTO experimentDTO)
+        public async Task<ActionResult> AddExperiment([FromBody] ExperimentDTOPost experimentDTO)
         {
             if (string.IsNullOrWhiteSpace(experimentDTO.Name))
                 return BadRequest(new ApiResponse(400, "Experiment Name is required."));
@@ -102,15 +117,88 @@ namespace Chemistry_laboratory_management.Controllers
             };
 
             await _experimentRepository.AddAsync(experiment);
-
-           var savedexperiment = await _experimentRepository.GetByIdAsync(experiment.Id); 
-
-            return CreatedAtAction(nameof(GetExperiment), new { id = savedexperiment.Id }, savedexperiment);
+            return CreatedAtAction(nameof(GetExperiment), new { id =experiment.Id }, experimentDTO);
         }
 
-       
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> DeleteWxperiment(int id)
+        {
+            var existingExperiment = await _experimentRepository.GetByIdAsync(id);
+            if (existingExperiment == null)
+                return NotFound(new ApiResponse(404, "Experiment not found."));
 
-       
+            await _experimentRepository.DeleteAsync(id);
 
+            return Ok(new ApiResponse(200, "Experiment deleted successfully."));
+        }
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateExperiment(int id, ExperimentDTOPost experimentDTO)
+        {
+            var experiment = await _experimentRepository.GetByIdWithIncludesAsync(
+                e => e.Id == id,
+                e => e.Equipments,
+                e => e.Chemicals
+            );
+
+            if (experiment == null)
+                return NotFound(new ApiResponse(404, "Experiment not found."));
+
+            // التحقق من الـ Equipments
+            if (experimentDTO.EquipmentUsedIds != null && experimentDTO.EquipmentUsedIds.Any())
+            {
+                var allEquipments = await _equipmentRepository.GetAllWithIncludesAsync();
+                var existingEquipments = allEquipments.Where(eq => experimentDTO.EquipmentUsedIds.Contains(eq.Id)).ToList();
+
+                var missingEquipments = experimentDTO.EquipmentUsedIds.Except(existingEquipments.Select(eq => eq.Id)).ToList();
+                if (missingEquipments.Any())
+                {
+                    return BadRequest(new ApiResponse(400, $"Some Equipments not found: {string.Join(", ", missingEquipments)}"));
+                }
+
+                experiment.Equipments = existingEquipments;
+            }
+
+            // التحقق من الـ Chemicals
+            if (experimentDTO.ChemicalsUsedIds != null && experimentDTO.ChemicalsUsedIds.Any())
+            {
+                var allChemicals = await _chemicalRepository.GetAllWithIncludesAsync();
+                var existingChemicals = allChemicals.Where(c => experimentDTO.ChemicalsUsedIds.Contains(c.Id)).ToList();
+
+                var missingChemicals = experimentDTO.ChemicalsUsedIds.Except(existingChemicals.Select(c => c.Id)).ToList();
+                if (missingChemicals.Any())
+                {
+                    return BadRequest(new ApiResponse(400, $"Some Chemicals not found: {string.Join(", ", missingChemicals)}"));
+                }
+
+                experiment.Chemicals = existingChemicals;
+            }
+
+            // تحديث البيانات
+            experiment.Name = experimentDTO.Name;
+            experiment.ExperimentDate = experimentDTO.Date;
+            experiment.SupervisorID = experimentDTO.SupervisorId;
+
+            await _experimentRepository.UpdateAsync(experiment);
+
+            return Ok(new ApiResponse(200, "Experiment updated successfully."));
+        }
+
+
+        [HttpGet("Supervisor/{supervisorId}")]
+        public async Task<ActionResult<IEnumerable<string>>> GetExperimentNamesBySupervisor(int supervisorId)
+        {
+            var experiments = await _experimentRepository.GetByConditionAsync(e => e.SupervisorID == supervisorId);
+
+            var experimentDTOs = experiments.Select(e => new ExperimentDTOSimpleResponse
+            {
+                Id = e.Id,
+                Name = e.Name
+            }).ToList();
+
+            return Ok(experimentDTOs);
+        }
+
+
+     
     }
 }

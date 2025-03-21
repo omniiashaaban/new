@@ -41,7 +41,6 @@ namespace laboratory.DAL.Repository
         {
             return await _context.Set<T>().Where(predicate).ToListAsync();
         }
-
         public async Task DeleteAsync(int id)
         {
             var entity = await _context.Set<T>().FindAsync(id);
@@ -51,5 +50,32 @@ namespace laboratory.DAL.Repository
                 await _context.SaveChangesAsync();
             }
         }
+        public async Task<T> GetByIdWithIncludesAsync(
+         Expression<Func<T, bool>> predicate,
+         params Expression<Func<T, object>>[] includes)
+        {
+            IQueryable<T> query = _context.Set<T>();
+
+            foreach (var include in includes)
+            {
+                query = query.Include(include);
+            }
+
+            return await query.FirstOrDefaultAsync(predicate);
+        }
+        public async Task<List<T>> GetAllWithIncludesAsync(params Expression<Func<T, object>>[] includes)
+        {
+            IQueryable<T> query = _context.Set<T>();
+
+            foreach (var include in includes)
+            {
+                query = query.Include(include);
+            }
+
+            return await query.ToListAsync();
+        }
+      
+
+      
     }
 }
