@@ -1,7 +1,11 @@
-﻿namespace Chemistry_laboratory_management.Dtos
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace Chemistry_laboratory_management.Dtos
 {
     public class ExperimentDTO
     {
+        public int Id { get; internal set; }
+        [Required]
         public string Name { get; set; }
         public DateTime Date { get; set; }
         public int SupervisorId { get; set; } // المشرف (UserId)
