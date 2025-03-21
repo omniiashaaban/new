@@ -1,9 +1,13 @@
-﻿
+
 //using Chemistry_laboratory_management.Dtos;
 //using laboratory.BLL.Services;
+//using laboratory.DAL.Data.context;
+//using laboratory.DAL.Models.Identity;
 //using LinkDev.Facial_Recognition.BLL.Helper.Errors;
 //using Microsoft.AspNetCore.Identity;
 //using Microsoft.AspNetCore.Mvc;
+//using Microsoft.EntityFrameworkCore;
+//using SixLabors.ImageSharp;
 //using System.Threading.Tasks;
 
 //namespace Chemistry_laboratory_management.Controllers
@@ -12,63 +16,82 @@
 //    [ApiController]
 //    public class AccountController : ControllerBase
 //    {
-//        private readonly UserManager<IdentityUser> _userManager;
-//        private readonly SignInManager<IdentityUser> _signInManager;
-//        private readonly IAuthService _authService;
+//        private readonly UserManager<AppUser> _user;
+//        private readonly SignInManager<AppUser> _signInManager;
+//        private readonly IAuthServices _auth;
+//        private readonly LaboratoryDbContext _context;
+//        private readonly IConfiguration _configuration;
 
-//        public AccountController(UserManager<IdentityUser> userManager, SignInManager<IdentityUser> signInManager, IAuthService authService)
+//        public AccountController(UserManager<AppUser> user, SignInManager<AppUser> signInManager, IAuthServices auth, LaboratoryDbContext context, IConfiguration configuration)
 //        {
-//            _userManager = userManager;
+//            _user = user;
 //            _signInManager = signInManager;
-//            _authService = authService;
+//            _auth = auth;
+//            _context = context;
+//            _configuration = configuration;
+
 //        }
 
 //        [HttpPost("login")]
 //        public async Task<ActionResult<UserDto>> Login(LoginDto model)
 //        {
-//            var user = await _userManager.FindByEmailAsync(model.Email);
-//            if (user == null)
-//                return Unauthorized(new ApiResponse(401, "Invalid Email or Password"));
+//            var CheckEmaile = await _user.FindByEmailAsync(model.Email);
+//            if (CheckEmaile == null)
+//                return Unauthorized(new ApiResponse(401));
+//            var result = await _signInManager.CheckPasswordSignInAsync(CheckEmaile, model.Password, false);
+//            if (result.Succeeded is false)
+//                return Unauthorized(new ApiResponse(401));
 
-//            var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password, false);
-//            if (!result.Succeeded)
-//                return Unauthorized(new ApiResponse(401, "Invalid Email or Password"));
-
-//            var roles = await _userManager.GetRolesAsync(user);
-
-//            return Ok(new UserDto
+//            return Ok(new UserDto()
 //            {
-//                Token = await _authService.CreateTokenAsync(user.Email, user.UserName, roles),
-//                Email = user.Email,
-//                DisplayName = user.UserName,
-//                Role = roles.FirstOrDefault()  // إرسال الدور للمستخدم
+//                DisplayName = CheckEmaile.DisplayName,
+//                Email = CheckEmaile.Email,
+//                Token = await _auth.CreateTokenAsync(CheckEmaile, _user)
+
+//            });
+//        }
+//        [HttpPost("register")]
+//        public async Task<ActionResult<UserDto>> Register(RegisterDto model)
+//        {
+//            // التحقق إذا كان الإيميل موجود مسبقًا في نظام المستخدمين
+//            var existingUser = await _user.FindByEmailAsync(model.Email);
+//            if (existingUser != null)
+//                return BadRequest(new ApiResponse(400, "Email is already registered."));
+
+//            // قراءة إيميلات الإدمن من `appsettings.json`
+//            var adminEmails = _configuration.GetSection("AdminEmails").Get<List<string>>();
+
+//            // تحديد الـ Role بناءً على البيانات
+//            string role = "Student"; // الافتراضي طالب
+//            if (await _context.Doctors.AnyAsync(d => d.Email == model.Email))
+//                role = "Doctor"; // لو الإيميل موجود في جدول الدكاترة
+//            else if (adminEmails.Contains(model.Email))
+//                role = "Admin"; // لو الإيميل موجود في قائمة الإدمنات
+
+//            // إنشاء الحساب الجديد
+//            var user = new AppUser()
+//            {
+//                DisplayName = model.DisplayName,
+//                Email = model.Email,
+//                UserName = model.Email.Split("@")[0],
+//                PhoneNumber = model.PhoneNumber,
+//            };
+
+//            var result = await _user.CreateAsync(user, model.Password);
+//            if (!result.Succeeded)
+//                return BadRequest(new ApiResponse(400));
+
+//            // تعيين الـ Role المناسب
+//            await _user.AddToRoleAsync(user, role);
+
+//            return Ok(new UserDto()
+//            {
+//                DisplayName = model.DisplayName,
+//                Email = model.Email,
+//                Token = await _auth.CreateTokenAsync(user, _user)
 //            });
 //        }
 
-//        [HttpPost("register")]
-//        public async Task<ActionResult<ApiResponse>> Register([FromBody] RegisterDto model)
-//        {
-//            var user = new IdentityUser
-//            {
-//                UserName = model.Email.Split("@")[0],
-//                Email = model.Email,
-//                PhoneNumber = model.PhoneNumber
-//            };
-
-//            var result = await _userManager.CreateAsync(user, model.Password);
-//            if (!result.Succeeded)
-//                return BadRequest(new ApiResponse(400, "User registration failed"));
-
-//            // التحقق من صحة الدور قبل التعيين
-//            string[] validRoles = { "Doctor", "Student", "Admin" };
-//            if (!validRoles.Contains(model.Role))
-//                return BadRequest(new ApiResponse(400, "Invalid role. Choose from Doctor, Student, or Admin."));
-
-//            // تعيين الدور للمستخدم
-//            await _userManager.AddToRoleAsync(user, model.Role);
-
-//            return Ok(new ApiResponse(200, $"{model.Role} registered successfully."));
-//        }
 
 //    }
 //}
